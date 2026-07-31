@@ -152,15 +152,21 @@ th{font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;
 <script>
 var API = localStorage.getItem('apiUrl') || '';
 var S = { pin:'', panitia:null, siswa:[], ruangan:[], sesi:{}, view:'login',
-          mode:'', laptop:null, swapRusak:null, hasil:null };
+          mode:'', laptop:null, swapRusak:null, hasil:null,
+          snapshot:{}, dimuat:0, ms:0, msServer:0 };
 
 /* ---------- jembatan API ---------- */
 function api(action, data){
   var body = Object.assign({action:action, pin:S.pin}, data||{});
+  var t0 = Date.now();
   return fetch(API, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify(body), redirect:'follow'})
     .then(function(r){ return r.json(); })
-    .then(function(j){ if(!j.ok) throw new Error(j.pesan||'Gagal memproses.'); return j; });
+    .then(function(j){
+      S.ms = Date.now() - t0; S.msServer = j.ms || 0;
+      if(!j.ok) throw new Error(j.pesan||'Gagal memproses.');
+      return j;
+    });
 }
 function sibuk(on, teks){
   var b = document.getElementById('btnAksi');
@@ -175,6 +181,34 @@ function pesan(html, jenis){
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
+/* ---------- snapshot laptop di HP ---------- */
+/* Seluruh data laptop diunduh sekali saat login, lalu setiap pemindaian
+   dijawab dari memori HP. Server tetap yang memvalidasi saat menyimpan. */
+function terapkanSnapshot(arr){
+  var peta = {};
+  (arr||[]).forEach(function(r){
+    peta[r[0]] = { id:r[0], pemilik:r[1], kelasMaster:r[2], merk:r[3],
+      ruangan:r[4], status:r[5],
+      kelengkapan:{charger:!!(r[6]&1), mouse:!!(r[6]&2), mousepad:!!(r[6]&4), headset:!!(r[6]&8)},
+      catatan:r[7],
+      pengguna: r[8] ? {nis:r[8], nama:r[9], kelas:r[10]} : null,
+      punyaSandi: !!r[11] };
+  });
+  S.snapshot = peta; S.dimuat = Date.now();
+}
+function umurSnapshot(){ return S.dimuat ? Math.round((Date.now()-S.dimuat)/1000) : -1; }
+function perbaruiLokal(id, ubah){
+  var L = S.snapshot[id]; if(!L) return;
+  for(var k in ubah) L[k] = ubah[k];
+}
+function segarkan(diam){
+  return api('snapshot').then(function(j){
+    terapkanSnapshot(j.laptop); S.ruangan = j.ruangan; S.sesi = j.sesi;
+    if(!diam) render();
+  }).catch(function(e){ if(!diam) pesan(esc(e.message),'err'); });
+}
+function segarkanManual(btn){ btn.disabled = true; btn.textContent = 'Memuat...'; segarkan(false); }
+
 /* ---------- navigasi ---------- */
 var tumpukan = [];
 function pergi(view){ tumpukan.push(S.view); S.view = view; render(); }
@@ -184,8 +218,12 @@ function keMenu(){ hentikanScanner(); tumpukan = []; S.view='menu'; render(); }
 function render(){
   hentikanScanner();
   document.getElementById('btnBack').classList.toggle('hidden', S.view==='menu'||S.view==='login');
-  document.getElementById('sesiLabel').textContent =
-    S.panitia ? (S.sesi.tanggal||'') + ' · ' + (S.sesi.sesi||'') + ' · ' + S.panitia.nama : '';
+  var jejak = '';
+  if(S.panitia){
+    jejak = (S.sesi.tanggal||'') + ' · ' + (S.sesi.sesi||'') + ' · ' + S.panitia.nama;
+    if(S.ms) jejak += ' · ' + S.ms + 'ms';
+  }
+  document.getElementById('sesiLabel').textContent = jejak;
   var el = document.getElementById('app');
   el.innerHTML = ({
     konfig:v_konfig, login:v_login, menu:v_menu, scan:v_scan, inspeksi:v_inspeksi, mapping:v_mapping,
@@ -212,6 +250,7 @@ function masuk(){
   sibuk(true,'Memeriksa...');
   api('bootstrap').then(function(j){
     S.panitia=j.panitia; S.siswa=j.siswa; S.ruangan=j.ruangan; S.sesi=j.sesi;
+    terapkanSnapshot(j.laptop);
     keMenu();
   }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); });
 }
@@ -254,10 +293,22 @@ function v_menu(){
       '<button class="menu-item" onclick="pergi(\'dashboard\')"><span class="n">Pusat</span>'+
       '<span>Dashboard &amp; laporan<small>Rekap ruangan, unit rusak, aksesoris hilang</small></span></button>'
     : '';
+  var umur = umurSnapshot();
+  var kapan = umur < 0 ? 'belum dimuat'
+            : umur < 60 ? umur + ' detik lalu'
+            : Math.round(umur/60) + ' menit lalu';
   return '<p class="eyebrow">Alur ujian</p>'+m+admin+
+    '<p class="eyebrow">Data</p>'+
+    '<button class="btn ghost small" style="margin-top:0" onclick="segarkanManual(this)">'+
+    Object.keys(S.snapshot).length+' laptop dimuat · '+kapan+' · Segarkan</button>'+
     '<button class="btn ghost small" onclick="location.reload()">Keluar</button>';
 }
-function mulaiMode(mode){ S.mode=mode; S.laptop=null; S.swapRusak=null; pergi('scan'); }
+function mulaiMode(mode){
+  S.mode=mode; S.laptop=null; S.swapRusak=null;
+  pergi('scan');
+  var umur = umurSnapshot();
+  if(umur < 0 || umur > 90) segarkan(true);   // menyegarkan diam-diam sambil kamera menyala
+}
 
 /* ---------- 3. SCANNER ---------- */
 var qr = null;
@@ -310,18 +361,26 @@ function hentikanScanner(){
 function kirimScan(teks){
   var id = String(teks||'').trim().toUpperCase();
   if(!id){ pesan('Isi dulu ID laptopnya.','err'); return; }
+  var L = S.snapshot[id];
+  if(L){ S.ms = 0; S.msServer = 0; lanjutScan(L); return; }   // tanpa menunggu server
   sibuk(true,'Mencari...');
   api('scan',{id:id}).then(function(j){
     S.sesi = j.sesi; S.ruangan = j.ruangan;
-    if(S.mode==='swap' && !S.swapRusak){
-      if(j.laptop.status!=='SEDANG_DIGUNAKAN'){
-        sibuk(false); pesan('<b>'+esc(id)+'</b> tidak sedang dipakai siapa pun. '+
-          'Scan laptop siswa yang bermasalah.','err'); mulaiScanner(); return;
-      }
-      S.swapRusak = j.laptop; render(); return;
-    }
-    S.laptop = j.laptop; S.view = S.mode; render();
+    S.snapshot[j.laptop.id] = j.laptop;
+    lanjutScan(j.laptop);
   }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); mulaiScanner(); });
+}
+function lanjutScan(L){
+  if(S.mode==='swap' && !S.swapRusak){
+    if(L.status!=='SEDANG_DIGUNAKAN'){
+      sibuk(false);
+      pesan('<b>'+esc(L.id)+'</b> tidak sedang dipakai siapa pun. '+
+        'Scan laptop siswa yang bermasalah.','err');
+      mulaiScanner(); return;
+    }
+    S.swapRusak = L; render(); return;
+  }
+  S.laptop = L; S.view = S.mode; render();
 }
 
 /* ---------- kartu tag ---------- */
@@ -392,6 +451,10 @@ function simpanInspeksi(){
     d[x]=document.getElementById('c_'+x).checked; });
   sibuk(true);
   api('inspeksi',d).then(function(j){
+    perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, status:j.status, pengguna:null,
+      catatan:d.catatan,
+      kelengkapan:{charger:d.charger, mouse:d.mouse, mousepad:d.mousepad, headset:d.headset},
+      punyaSandi: S.laptop.punyaSandi || (d.password !== undefined && d.password !== '') });
     S.hasil={judul:'Tersimpan', teks:j.pesan, jenis:'ok'}; S.view='hasil'; render();
   }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); });
 }
@@ -432,6 +495,7 @@ function simpanMapping(){
   if(!nis){ pesan('Pilih nama siswa dari daftar yang muncul.','err'); return; }
   sibuk(true);
   api('mapping',{id:S.laptop.id, nis:nis}).then(function(j){
+    perbaruiLokal(S.laptop.id, { status:'SEDANG_DIGUNAKAN', pengguna:j.pengguna });
     S.hasil={judul:'Terpasang', teks:j.pesan, jenis:'ok'}; S.view='hasil'; render();
   }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); });
 }
@@ -455,6 +519,8 @@ function simpanSwap(){
   api('swap',{idRusak:S.swapRusak.id, idBaru:S.laptop.id,
     alasan:(document.querySelector('input[name=alasan]:checked')||{}).value})
     .then(function(j){
+      perbaruiLokal(S.swapRusak.id, { status:'RUSAK', ruangan:'Ruang Laptop', pengguna:null });
+      perbaruiLokal(S.laptop.id, { status:'SEDANG_DIGUNAKAN', ruangan:j.ruangan, pengguna:j.pengguna });
       var nama=['charger','mouse','mousepad','headset'].filter(function(x){return j.kelengkapan[x];});
       S.hasil={judul:'Laptop ditukar', jenis:'ok', teks:j.pesan,
         rinci:'Sandi '+S.laptop.id+': <b style="font-family:\'IBM Plex Mono\',monospace">'+
@@ -491,6 +557,8 @@ function simpanCheckout(){
     var el=document.getElementById('c_'+x); d[x]= el?el.checked:false; });
   sibuk(true,'Memeriksa...');
   api('checkout',d).then(function(j){
+    perbaruiLokal(S.laptop.id, { status:j.status, pengguna:null,
+      kelengkapan:{charger:d.charger, mouse:d.mouse, mousepad:d.mousepad, headset:d.headset} });
     S.hasil = j.hilang.length
       ? {judul:'Aksesoris hilang dilaporkan', jenis:'err', teks:j.pesan,
          rinci:'Item: <b>'+j.hilang.join(', ')+'</b><br>Penanggung jawab: '+esc(j.siswa)+
@@ -505,6 +573,7 @@ function v_hasil(){
   var h=S.hasil;
   return '<p class="eyebrow">Selesai</p><h2>'+esc(h.judul)+'</h2>'+
     '<div class="note '+h.jenis+'">'+esc(h.teks)+(h.rinci?'<br><br>'+h.rinci:'')+'</div>'+
+    '<p class="hint">server '+S.msServer+' ms · bolak-balik '+S.ms+' ms</p>'+
     '<button class="btn" onclick="mulaiMode(S.mode)">Scan laptop berikutnya</button>'+
     '<button class="btn ghost small" onclick="keMenu()">Kembali ke menu</button>';
 }

@@ -326,10 +326,17 @@ function kirimScan(teks){
 
 /* ---------- kartu tag ---------- */
 function kartu(L, extra){
+  var pemilik = String(L.pemilik||'').trim();
+  var kelas = String(L.kelasMaster||'').trim();
+  if(kelas === '-' || kelas === '0') kelas = '';
+  var bagian = [];
+  if(String(L.merk||'').trim()) bagian.push(esc(L.merk));
+  if(pemilik) bagian.push('pemilik: '+esc(pemilik)+(kelas?' &middot; '+esc(kelas):''));
+  else if(kelas) bagian.push('kelas '+esc(kelas));
+  if(String(L.ruangan||'').trim()) bagian.push(esc(L.ruangan));
   return '<div class="tag" data-s="'+esc(L.status)+'">'+
     '<div class="tag-head"><div class="hole"></div><div class="tag-id">'+esc(L.id)+
-    '<div class="tag-meta">'+esc(L.merk||'-')+' &middot; pemilik: '+esc(L.pemilik||'-')+
-    (L.ruangan?' &middot; '+esc(L.ruangan):'')+'</div></div>'+
+    '<div class="tag-meta">'+(bagian.join(' &middot; ')||'&mdash;')+'</div></div>'+
     '<span class="pill '+esc(L.status)+'">'+esc(String(L.status).replace(/_/g,' '))+'</span></div>'+
     (extra?'<div class="tag-body">'+extra+'</div>':'')+'</div>';
 }

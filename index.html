@@ -362,15 +362,33 @@ function kirimScan(teks){
   var id = String(teks||'').trim().toUpperCase();
   if(!id){ pesan('Isi dulu ID laptopnya.','err'); return; }
   var L = S.snapshot[id];
-  if(L){ S.ms = 0; S.msServer = 0; lanjutScan(L); return; }   // tanpa menunggu server
-  sibuk(true,'Mencari...');
+  if(L){ S.ms = 0; S.msServer = 0; lanjutScan(L, false); return; }  // tanpa menunggu server
+  ambilDariServer(id, false);
+}
+
+/* Salinan di HP bisa tertinggal kalau panitia lain baru saja mengubah laptop
+   yang sama. Selama datanya mengizinkan alur berjalan, pakai saja yang lokal.
+   Tapi begitu data lokal hendak MENOLAK, tanyakan dulu ke server — supaya
+   panitia tidak terhalang oleh data usang. */
+function perluVerifikasi(L){
+  var s = L.status;
+  if(S.mode==='inspeksi') return s==='SEDANG_DIGUNAKAN';
+  if(S.mode==='mapping')  return s!=='SIAP_PAKAI';
+  if(S.mode==='checkout') return s!=='SEDANG_DIGUNAKAN';
+  if(S.mode==='swap')     return S.swapRusak ? s!=='CADANGAN' : s!=='SEDANG_DIGUNAKAN';
+  return false;
+}
+function ambilDariServer(id, sudahDicek){
+  sibuk(true,'Memeriksa...');
   api('scan',{id:id}).then(function(j){
     S.sesi = j.sesi; S.ruangan = j.ruangan;
     S.snapshot[j.laptop.id] = j.laptop;
-    lanjutScan(j.laptop);
+    lanjutScan(j.laptop, true);
   }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); mulaiScanner(); });
 }
-function lanjutScan(L){
+function lanjutScan(L, sudahDicek){
+  if(!sudahDicek && perluVerifikasi(L)){ ambilDariServer(L.id, true); return; }
+
   if(S.mode==='swap' && !S.swapRusak){
     if(L.status!=='SEDANG_DIGUNAKAN'){
       sibuk(false);
@@ -379,6 +397,12 @@ function lanjutScan(L){
       mulaiScanner(); return;
     }
     S.swapRusak = L; render(); return;
+  }
+  if(S.mode==='swap' && S.swapRusak && L.status!=='CADANGAN'){
+    sibuk(false);
+    pesan('<b>'+esc(L.id)+'</b> bukan unit cadangan (status: '+
+      esc(String(L.status).replace(/_/g,' '))+').','err');
+    mulaiScanner(); return;
   }
   S.laptop = L; S.view = S.mode; render();
 }

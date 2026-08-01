@@ -401,8 +401,10 @@ function kirimScan(teks){
    panitia tidak terhalang oleh data usang. */
 function perluVerifikasi(L){
   var s = L.status;
+  // Fase 2 selalu diverifikasi: form ini menampilkan penugasan yang sudah ada,
+  // dan menyimpan berdasarkan tampilan yang usang bisa menimpa kerja panitia lain.
+  if(S.mode==='mapping')  return true;
   if(S.mode==='inspeksi') return adaTerbuka(L);
-  if(S.mode==='mapping')  return s!=='SIAP_PAKAI';
   if(S.mode==='checkout') return !adaTerbuka(L);
   if(S.mode==='swap')     return S.swapRusak ? s!=='CADANGAN' : !terbukaSesiAktif(L);
   return false;
@@ -517,7 +519,7 @@ function simpanInspeksi(){
     d[x]=document.getElementById('c_'+x).checked; });
   sibuk(true);
   api('inspeksi',d).then(function(j){
-    perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, status:j.status, pengguna:null,
+    perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, status:j.status,
       catatan:d.catatan,
       kelengkapan:{charger:d.charger, mouse:d.mouse, mousepad:d.mousepad, headset:d.headset},
       punyaSandi: S.laptop.punyaSandi || (d.password !== undefined && d.password !== '') });
@@ -550,7 +552,8 @@ function v_mapping(){
       '<div class="ac"><input id="q'+ke+'" autocomplete="off" '+
       'placeholder="Ketik 2 huruf nama, atau biarkan kosong" value="'+nilai+'" '+
       'oninput="cariSiswa(this.value,'+ke+')"><div id="ac'+ke+'"></div></div>'+
-      '<input type="hidden" id="nis'+ke+'" value="'+(p?esc(p[1]):'')+'">';
+      '<input type="hidden" id="nis'+ke+'" value="'+(p?esc(p[1]):'')+'" '+
+      'data-awal="'+(p?esc(p[1]):'')+'">';
   }).join('');
 
   return '<p class="eyebrow">Fase 2 · Pasang siswa</p>'+kartu(L,isi)+'<div id="notif"></div>'+
@@ -578,17 +581,24 @@ function pilihSiswa(nis,nama,ke){
   document.getElementById('ac'+ke).innerHTML='';
 }
 function simpanMapping(){
-  var daftar=[], adaIsi=false;
+  var daftar=[], adaIsi=false, salah='';
   daftarSesi().forEach(function(nm, ke){
     var h=document.getElementById('nis'+ke), t=document.getElementById('q'+ke);
     if(!h) return;                                  // sesi terkunci
     if(t && t.value.trim() && !h.value){
-      throw new Error('Nama pada '+nm+' belum dipilih dari daftar.');
+      salah = salah || ('Nama pada '+nm+' belum dipilih dari daftar yang muncul.');
+      return;
     }
+    var semula = h.getAttribute('data-awal') || '';
+    // Sesi yang memang kosong sejak awal TIDAK dikirim. Kalau dikirim, server
+    // akan menganggapnya perintah membatalkan — dan itu bisa menghapus
+    // penugasan yang baru saja diisi panitia lain di HP berbeda.
+    if(!h.value && !semula) return;
     daftar.push({sesi:nm, nis:h.value});
     if(h.value) adaIsi=true;
   });
-  if(!daftar.length){ pesan('Semua sesi sudah ditutup, tidak ada yang bisa diubah.','err'); return; }
+  if(salah){ pesan(esc(salah),'err'); return; }
+  if(!daftar.length){ pesan('Tidak ada perubahan untuk disimpan.','warn'); return; }
   sibuk(true);
   api('mapping',{id:S.laptop.id, daftar:daftar}).then(function(j){
     perbaruiLokal(S.laptop.id, { penugasan:j.penugasan });
@@ -666,11 +676,19 @@ function v_checkout(){
       'Sesi lain tetap terbuka</small></span></label>'
     : '';
 
+  // Patokan diambil dari penugasan terbuka paling awal — sama dengan yang dipakai
+  // server. Kondisi laptop sekarang bisa berbeda kalau sesi sebelumnya sudah
+  // melaporkan ada yang hilang.
+  var bit = terbuka[0][5];
+  if(bit === undefined) bit = (L.kelengkapan.charger?1:0)+(L.kelengkapan.mouse?2:0)+
+    (L.kelengkapan.mousepad?4:0)+(L.kelengkapan.headset?8:0);
+  var patokan = {charger:!!(bit&1), mouse:!!(bit&2), mousepad:!!(bit&4), headset:!!(bit&8)};
+
   return '<p class="eyebrow">Fase 3 · Check-out</p>'+kartu(L, barisPenugasan(L))+peringatan+
     '<div id="notif"></div>'+lingkup+
     '<label>Centang yang benar-benar ada di meja</label>'+
     ['charger','mouse','mousepad','headset'].map(function(x){
-      if(!L.kelengkapan[x]) return '';
+      if(!patokan[x]) return '';
       return '<label class="check" onchange="this.classList.toggle(\'off\',!this.querySelector(\'input\').checked)">'+
         '<input type="checkbox" id="c_'+x+'" checked>'+x.charAt(0).toUpperCase()+x.slice(1)+'</label>';
     }).join('')+
@@ -716,10 +734,15 @@ function v_dashboard(){
 }
 function muatDashboard(){
   api('dashboard').then(function(j){
-    var urut=['SIAP_PAKAI','SEDANG_DIGUNAKAN','CADANGAN','RUSAK','AKSESORIS_HILANG','BELUM_SETUP'];
+    var urut=['SIAP_PAKAI','CADANGAN','RUSAK','AKSESORIS_HILANG','BELUM_SETUP'];
     var stat=urut.filter(function(k){return j.perStatus[k];}).map(function(k){
       return '<div class="stat"><b>'+j.perStatus[k]+'</b><span>'+k.replace(/_/g,' ')+'</span></div>'; }).join('');
     stat+='<div class="stat"><b>'+j.swapHariIni+'</b><span>Tukar hari ini</span></div>';
+
+    var perSesi='<table><tr><th>Sesi</th><th>Terisi</th><th>Berjalan</th><th>Selesai</th></tr>'+
+      Object.keys(j.perSesi||{}).map(function(s){ var x=j.perSesi[s];
+        return '<tr><td>'+esc(s)+'</td><td>'+x.terisi+'</td><td>'+x.terbuka+
+          '</td><td>'+x.selesai+'</td></tr>'; }).join('')+'</table>';
 
     var ruang='<table><tr><th>Ruangan</th><th>Isi</th></tr>'+
       Object.keys(j.perRuangan).map(function(r){
@@ -754,6 +777,7 @@ function muatDashboard(){
 
     document.getElementById('dash').innerHTML =
       '<div class="grid">'+stat+'</div>'+
+      '<p class="eyebrow">Peserta per sesi</p>'+perSesi+
       '<p class="eyebrow">Sebaran per ruangan</p>'+ruang+
       '<p class="eyebrow">Aksesoris hilang · belum selesai</p>'+(lap||'<div class="note ok">Kosong.</div>')+
       '<p class="eyebrow">Siswa bertanda</p>'+flag+

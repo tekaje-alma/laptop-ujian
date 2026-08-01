@@ -86,7 +86,11 @@ h2{font-size:20px;font-weight:700;margin:0 0 4px}
 
 /* ---- kontrol ---- */
 label{display:block;font-weight:600;font-size:14px;margin:16px 0 6px}
-input,select,textarea{
+
+/* Checkbox dan radio SENGAJA dikecualikan dari aturan ini.
+   appearance:none menghapus gambar bawaan keduanya, sehingga kotaknya
+   tetap kosong walau sudah tercentang — dan accent-color ikut mati. */
+input:not([type=checkbox]):not([type=radio]),select,textarea{
   width:100%;max-width:100%;min-height:var(--tap);padding:12px 14px;
   /* JANGAN turunkan di bawah 16px: iOS otomatis memperbesar halaman
      saat kolom dengan font lebih kecil disentuh. */
@@ -111,16 +115,25 @@ input:focus,select:focus,textarea:focus,button:focus-visible{
 .btn.small{min-height:44px;font-size:14px;margin-top:8px}
 .btn[disabled]{opacity:.5}
 
+/* Tampilan bawaan dikembalikan secara tegas, supaya tanda centang dan titik
+   radio benar-benar terlihat. accent-color hanya berlaku bila appearance
+   bukan none, jadi keduanya harus diatur bersamaan. */
+.check input,.radio input{
+  -webkit-appearance:auto;appearance:auto;
+  min-height:0;flex:none;margin:0;padding:0;border:0;background:none;
+  accent-color:var(--teal);cursor:pointer;
+}
+
 .check{display:flex;align-items:center;gap:14px;min-height:var(--tap);
   padding:0 14px;background:var(--card);border:1px solid var(--edge);
   border-radius:4px;margin-bottom:8px;cursor:pointer;font-weight:500}
-.check input{width:24px;height:24px;min-height:0;flex:none;accent-color:var(--teal)}
+.check input{width:24px;height:24px}
 .check.off{background:#FBEDEC;border-color:var(--red)}
 
 .radio{display:flex;align-items:center;gap:14px;min-height:var(--tap);padding:0 14px;
   background:var(--card);border:1px solid var(--edge);border-radius:4px;
   margin-bottom:8px;cursor:pointer;font-weight:500}
-.radio input{width:22px;height:22px;min-height:0;flex:none;accent-color:var(--teal)}
+.radio input{width:22px;height:22px}
 
 .menu-item{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
   background:var(--card);border:1px solid var(--edge);border-radius:4px;

@@ -7,6 +7,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+<!-- Berkas ini disajikan apa adanya oleh GitHub Pages. Saat disajikan Apps
+     Script, doGet() mengganti __API_URL__ dengan alamat web app. Karena
+     penggantinya berupa teks di dalam JSON, berkasnya tetap HTML yang sah
+     di kedua tempat — satu berkas, tidak ada salinan yang perlu disamakan. -->
+<script id="cfg" type="application/json">{"apiUrl":"__API_URL__"}</script>
+
 <style>
 :root{
   --graphite:#1B1D21; --slate:#5B6670; --paper:#E9EDEF; --card:#FFFFFF;
@@ -39,9 +46,8 @@ body{
   display:flex;align-items:center;gap:12px;
 }
 .top h1{font-size:14px;font-weight:600;letter-spacing:.02em;margin:0;flex:1;min-width:0}
-.top .sesi{overflow-wrap:anywhere}
-.top .sesi{font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;
-  text-transform:uppercase;color:#9AA6AD;display:block;margin-top:3px}
+.top .sesi{overflow-wrap:anywhere;font:500 11px/1.35 'IBM Plex Mono',monospace;
+  letter-spacing:.08em;text-transform:uppercase;color:#9AA6AD;display:block;margin-top:3px}
 .back{background:none;border:0;color:#fff;font-size:22px;padding:4px 8px;cursor:pointer}
 
 /* ---- kartu tag: elemen tanda tangan ---- */
@@ -54,7 +60,6 @@ body{
 }
 .tag[data-s="SIAP_PAKAI"]::before{background:var(--green)}
 .tag[data-s="CADANGAN"]::before{background:var(--amber)}
-.tag[data-s="SEDANG_DIGUNAKAN"]::before{background:var(--teal)}
 .tag[data-s="RUSAK"]::before,.tag[data-s="AKSESORIS_HILANG"]::before{background:var(--red)}
 .tag-head{
   padding:16px 16px 14px 26px;border-bottom:1px dashed var(--edge);
@@ -70,7 +75,7 @@ body{
 .pill{display:inline-block;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;
   text-transform:uppercase;padding:6px 9px;border-radius:3px;color:#fff;background:var(--slate)}
 .pill.SIAP_PAKAI{background:var(--green)} .pill.CADANGAN{background:var(--amber)}
-.pill.SEDANG_DIGUNAKAN{background:var(--teal)} .pill.RUSAK{background:var(--red)}
+.pill.RUSAK{background:var(--red)}
 .pill.AKSESORIS_HILANG{background:var(--flag)} .pill.BELUM_SETUP{background:var(--slate)}
 
 /* ---- tipografi bantu ---- */
@@ -124,6 +129,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{
 .menu-item .n{font:600 12px/1 'IBM Plex Mono',monospace;color:var(--slate);
   letter-spacing:.06em;flex:none;width:56px}
 .menu-item small{display:block;font-weight:400;font-size:13px;color:var(--slate);margin-top:2px}
+.menu-item span{min-width:0}
 
 /* ---- scanner ---- */
 #reader{width:100%;border-radius:4px;overflow:hidden;background:#000;min-height:240px}
@@ -135,6 +141,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{
 .note.ok{border-left-color:var(--green)}
 .note.err{border-left-color:var(--red);background:#FBEDEC}
 .note.warn{border-left-color:var(--amber);background:#FDF6E6}
+.note,.lead,.hint{overflow-wrap:anywhere}
 
 /* ---- autocomplete ---- */
 .ac{position:relative}
@@ -159,8 +166,15 @@ th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--paper);
 th{font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;
   text-transform:uppercase;color:var(--slate)}
 .hidden{display:none}
-.note,.lead,.hint{overflow-wrap:anywhere}
-.menu-item span{min-width:0}
+
+/* ---- aliran aktivitas ---- */
+.jejak{background:var(--card);border:1px solid var(--edge);border-radius:4px;
+  max-height:320px;overflow:auto}
+.jejak div{padding:10px 12px;border-bottom:1px solid var(--paper);font-size:13px;line-height:1.45}
+.jejak div:last-child{border-bottom:0}
+.jejak .jam{font:500 11px 'IBM Plex Mono',monospace;color:var(--slate)}
+.jejak .siapa{font-weight:600}
+.jejak .gagal{background:#FBEDEC}
 
 /* Layar sangat sempit */
 @media (max-width:380px){
@@ -202,7 +216,16 @@ th{font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;
 <div class="wrap" id="app"></div>
 
 <script>
-var API = localStorage.getItem('apiUrl') || '';
+/* Alamat server: disuntik Apps Script, atau disimpan sendiri di HP saat
+   aplikasi di-host di GitHub Pages. */
+var API = (function(){
+  try{
+    var c = JSON.parse(document.getElementById('cfg').textContent);
+    if(c.apiUrl && c.apiUrl.indexOf('__') !== 0) return c.apiUrl;
+  }catch(e){}
+  try{ return localStorage.getItem('apiUrl') || ''; }catch(e){ return ''; }
+})();
+
 var S = { pin:'', panitia:null, siswa:[], ruangan:[], sesi:{}, view:'login',
           mode:'', laptop:null, swapRusak:null, hasil:null,
           snapshot:{}, dimuat:0, ms:0, msServer:0 };
@@ -232,6 +255,9 @@ function pesan(html, jenis){
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function bolehMode(aksi){
+  return !!(S.panitia && S.panitia.izin && S.panitia.izin.indexOf(aksi) > -1);
+}
 
 /* ---------- snapshot laptop di HP ---------- */
 /* Seluruh data laptop diunduh sekali saat login, lalu setiap pemindaian
@@ -247,7 +273,7 @@ function terapkanSnapshot(arr){
   });
   S.snapshot = peta; S.dimuat = Date.now();
 }
-/* penugasan: [indeksSesi, nis, nama, kelas, hasil] per sesi terisi */
+/* penugasan: [indeksSesi, idSiswa, nama, kelas, hasil, bitKelengkapan] */
 function daftarSesi(){ return (S.sesi && S.sesi.daftar) || []; }
 function sesiAktif(){ return (S.sesi && S.sesi.sesi) || ''; }
 function indeksSesiAktif(){ return daftarSesi().indexOf(sesiAktif()); }
@@ -289,7 +315,8 @@ function keMenu(){ hentikanScanner(); tumpukan = []; S.view='menu'; render(); }
 
 function render(){
   hentikanScanner();
-  document.getElementById('btnBack').classList.toggle('hidden', S.view==='menu'||S.view==='login');
+  document.getElementById('btnBack').classList.toggle('hidden',
+    S.view==='menu'||S.view==='login'||S.view==='konfig');
   var jejak = '';
   if(S.panitia){
     jejak = (S.sesi.tanggal||'') + ' · ' + (S.sesi.sesi||'') + ' · ' + S.panitia.nama;
@@ -299,36 +326,18 @@ function render(){
   document.getElementById('sesiLabel').textContent = jejak;
   var el = document.getElementById('app');
   el.innerHTML = ({
-    konfig:v_konfig, login:v_login, menu:v_menu, scan:v_scan, inspeksi:v_inspeksi, mapping:v_mapping,
-    swap:v_swap, checkout:v_checkout, hasil:v_hasil, dashboard:v_dashboard
+    konfig:v_konfig, login:v_login, menu:v_menu, scan:v_scan, inspeksi:v_inspeksi,
+    mapping:v_mapping, swap:v_swap, checkout:v_checkout, hasil:v_hasil,
+    dashboard:v_dashboard, aktivitas:v_aktivitas
   })[S.view]();
   window.scrollTo(0,0);
   if(S.view==='scan') mulaiScanner();
   if(S.view==='dashboard') muatDashboard();
+  if(S.view==='aktivitas') muatAktivitas();
   var f = document.getElementById('fokus'); if(f) f.focus();
 }
 
-/* ---------- 1. LOGIN ---------- */
-function v_login(){
-  return '<p class="eyebrow">Masuk</p><h2>PIN panitia</h2>'+
-    '<p class="lead">Setiap tindakan tercatat atas nama pemilik PIN.</p>'+
-    '<div id="notif"></div>'+
-    '<input id="fokus" type="tel" inputmode="numeric" autocomplete="off" placeholder="Masukkan PIN" '+
-    'onkeydown="if(event.key===\'Enter\')masuk()">'+
-    '<button class="btn" id="btnAksi" onclick="masuk()">Masuk</button>'+
-    '<button class="btn ghost small" onclick="lupakanAlamat()">Ganti alamat server</button>';
-}
-function masuk(){
-  S.pin = document.getElementById('fokus').value.trim();
-  sibuk(true,'Memeriksa...');
-  api('bootstrap').then(function(j){
-    S.panitia=j.panitia; S.siswa=j.siswa; S.ruangan=j.ruangan; S.sesi=j.sesi;
-    terapkanSnapshot(j.laptop);
-    keMenu();
-  }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); });
-}
-
-/* ---------- 0. ALAMAT SERVER ---------- */
+/* ---------- 0. ALAMAT SERVER (hanya muncul di host luar) ---------- */
 function v_konfig(){
   return '<p class="eyebrow">Pengaturan awal</p><h2>Alamat server</h2>'+
     '<p class="lead">Tempel Web app URL dari Apps Script. Cukup diisi sekali di tiap HP.</p>'+
@@ -350,22 +359,58 @@ function lupakanAlamat(){
   API=''; S.view='konfig'; render();
 }
 
+/* ---------- 1. LOGIN ---------- */
+function v_login(){
+  var tertanam = false;
+  try{ tertanam = JSON.parse(document.getElementById('cfg').textContent).apiUrl.indexOf('__')!==0; }catch(e){}
+  return '<p class="eyebrow">Masuk</p><h2>PIN panitia</h2>'+
+    '<p class="lead">Setiap tindakan tercatat atas nama pemilik PIN.</p>'+
+    '<div id="notif"></div>'+
+    '<input id="fokus" type="tel" inputmode="numeric" autocomplete="off" placeholder="Masukkan PIN" '+
+    'onkeydown="if(event.key===\'Enter\')masuk()">'+
+    '<button class="btn" id="btnAksi" onclick="masuk()">Masuk</button>'+
+    (tertanam ? '' :
+      '<button class="btn ghost small" onclick="lupakanAlamat()">Ganti alamat server</button>');
+}
+function masuk(){
+  S.pin = document.getElementById('fokus').value.trim();
+  sibuk(true,'Memeriksa...');
+  api('bootstrap').then(function(j){
+    S.panitia=j.panitia; S.siswa=j.siswa; S.ruangan=j.ruangan; S.sesi=j.sesi;
+    terapkanSnapshot(j.laptop);
+    keMenu();
+  }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); });
+}
+
 /* ---------- 2. MENU ---------- */
 function v_menu(){
-  var m = [
+  var semua = [
     ['Fase 1','Inspeksi ruangan','Tempatkan laptop, catat sandi &amp; kelengkapan','inspeksi'],
-    ['Fase 2','Pasang siswa','Tautkan laptop ke siswa sesi ini','mapping'],
+    ['Fase 2','Pasang siswa','Tautkan laptop ke siswa per sesi','mapping'],
     ['Insiden','Tukar laptop','Ganti unit rusak dengan cadangan','swap'],
     ['Fase 3','Check-out','Periksa aksesoris sebelum siswa keluar','checkout']
-  ].map(function(x){
+  ].filter(function(x){ return bolehMode(x[3]); });
+
+  var m = semua.map(function(x){
     return '<button class="menu-item" onclick="mulaiMode(\''+x[3]+'\')">'+
       '<span class="n">'+x[0]+'</span><span>'+x[1]+'<small>'+x[2]+'</small></span></button>';
-  }).join('');
+  }).join('') || '<div class="note warn">Belum ada menu yang dibuka untuk Anda. '+
+    'Minta admin mengisi kolom <b>izin</b> di sheet MASTER_PANITIA.</div>';
+
   var admin = (S.panitia && S.panitia.peran==='admin')
     ? '<p class="eyebrow">Admin</p>'+
       '<button class="menu-item" onclick="pergi(\'dashboard\')"><span class="n">Pusat</span>'+
-      '<span>Dashboard &amp; laporan<small>Rekap ruangan, unit rusak, aksesoris hilang</small></span></button>'
+      '<span>Dashboard &amp; laporan<small>Rekap ruangan, unit rusak, aksesoris hilang</small></span></button>'+
+      '<button class="menu-item" onclick="pergi(\'aktivitas\')"><span class="n">Jejak</span>'+
+      '<span>Aktivitas panitia<small>Siapa mengerjakan apa, termasuk yang gagal</small></span></button>'
     : '';
+
+  var mode = (S.sesi.mode && S.sesi.mode!=='normal')
+    ? '<div class="note err">Aplikasi sedang <b>'+esc(String(S.sesi.mode).replace(/_/g,' '))+'</b>. '+
+      (S.panitia.peran==='admin' ? 'Anda tetap bisa menyimpan sebagai admin.'
+                                 : 'Penyimpanan dinonaktifkan sampai admin membukanya.')+'</div>'
+    : '';
+
   var ingat = (S.sesi.saran && S.sesi.saran !== S.sesi.sesi)
     ? '<div class="note warn">Menurut jamnya sekarang <b>'+esc(S.sesi.saran)+'</b>, '+
       'tapi sesi aktif masih <b>'+esc(S.sesi.sesi)+'</b>.<br>'+
@@ -373,19 +418,20 @@ function v_menu(){
         ? 'Buka Dashboard untuk menggantinya.'
         : 'Beri tahu admin ujian sebelum mendata peserta.')+'</div>'
     : '';
+
   var umur = umurSnapshot();
   var kapan = umur < 0 ? 'belum dimuat'
             : umur < 60 ? umur + ' detik lalu'
             : Math.round(umur/60) + ' menit lalu';
-  return ingat+'<p class="eyebrow">Alur ujian</p>'+m+admin+
+  return mode+ingat+'<p class="eyebrow">Alur ujian</p>'+m+admin+
     '<p class="eyebrow">Data</p>'+
     '<button class="btn ghost small" style="margin-top:0" onclick="segarkanManual(this)">'+
-    Object.keys(S.snapshot).length+' laptop dimuat · '+kapan+' · Segarkan</button>'+
+    Object.keys(S.snapshot).length+' laptop · '+S.siswa.length+' siswa · '+kapan+' · Segarkan</button>'+
     '<button class="btn ghost small" onclick="location.reload()">Keluar</button>';
 }
 function mulaiMode(mode){
   S.mode=mode; S.laptop=null; S.swapRusak=null;
-  pergi('scan');
+  tumpukan = ['menu']; S.view='scan'; render();
   var umur = umurSnapshot();
   if(umur < 0 || umur > 90) segarkan(true);   // menyegarkan diam-diam sambil kamera menyala
 }
@@ -427,8 +473,8 @@ function gagalKamera(kode){
   var saran = {
     NotAllowedError:'Izin kamera diblokir. Kalau aplikasi ini dibuka lewat URL Apps Script, penyebabnya adalah iframe Google yang memang melarang kamera — perlu di-host sendiri.',
     NotFoundError:'Tidak ada kamera yang terdeteksi di perangkat ini.',
-    NotReadableError:'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera/video call lalu coba lagi.',
-    TidakDidukung:'Browser ini tidak mengizinkan akses kamera. Buka lewat Chrome atau Safari, bukan browser di dalam WhatsApp/Instagram.',
+    NotReadableError:'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera atau video call lalu coba lagi.',
+    TidakDidukung:'Browser ini tidak mengizinkan akses kamera. Buka lewat Chrome atau Safari, bukan browser di dalam WhatsApp atau Instagram.',
     PustakaGagalDimuat:'Pustaka pemindai gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.'
   }[kode] || 'Buka lewat Chrome atau Safari langsung, bukan browser di dalam aplikasi lain.';
   var kotak = document.getElementById('reader');
@@ -437,14 +483,14 @@ function gagalKamera(kode){
     '<br><br>Alur tetap bisa lanjut: ketik ID laptopnya di bawah.</div>';
 }
 function hentikanScanner(){
-  if(qr){ try{ qr.stop().then(function(){ qr.clear(); }); }catch(e){} qr=null; }
+  if(qr){ var q=qr; qr=null; try{ q.stop().then(function(){ q.clear(); }).catch(function(){}); }catch(e){} }
 }
 function kirimScan(teks){
   var id = String(teks||'').trim().toUpperCase();
   if(!id){ pesan('Isi dulu ID laptopnya.','err'); return; }
   var L = S.snapshot[id];
   if(L){ S.ms = 0; S.msServer = 0; lanjutScan(L, false); return; }  // tanpa menunggu server
-  ambilDariServer(id, false);
+  ambilDariServer(id);
 }
 
 /* Salinan di HP bisa tertinggal kalau panitia lain baru saja mengubah laptop
@@ -461,7 +507,7 @@ function perluVerifikasi(L){
   if(S.mode==='swap')     return S.swapRusak ? s!=='CADANGAN' : !terbukaSesiAktif(L);
   return false;
 }
-function ambilDariServer(id, sudahDicek){
+function ambilDariServer(id){
   sibuk(true,'Memeriksa...');
   api('scan',{id:id}).then(function(j){
     S.sesi = j.sesi; S.ruangan = j.ruangan;
@@ -470,7 +516,7 @@ function ambilDariServer(id, sudahDicek){
   }).catch(function(e){ sibuk(false); pesan(esc(e.message),'err'); mulaiScanner(); });
 }
 function lanjutScan(L, sudahDicek){
-  if(!sudahDicek && perluVerifikasi(L)){ ambilDariServer(L.id, true); return; }
+  if(!sudahDicek && perluVerifikasi(L)){ ambilDariServer(L.id); return; }
 
   if(S.mode==='swap' && !S.swapRusak){
     if(!terbukaSesiAktif(L)){
@@ -547,17 +593,20 @@ function v_inspeksi(){
       return '<label class="check"><input type="checkbox" id="c_'+x+'" '+
         (k[x]||L.status==='BELUM_SETUP'?'checked':'')+'>'+
         x.charAt(0).toUpperCase()+x.slice(1)+'</label>'; }).join('')+
-    '<label for="sandi">Sandi / PIN laptop</label>'+
-    '<input id="sandi" autocomplete="off" placeholder="'+(L.punyaSandi?'Sudah tersimpan — isi untuk mengganti':'Contoh: 123456')+'">'+
+    '<label for="sandi">Sandi atau PIN laptop</label>'+
+    '<input id="sandi" autocomplete="off" placeholder="'+
+    (L.punyaSandi?'Sudah tersimpan — isi untuk mengganti':'Contoh: 123456')+'">'+
     '<label for="catatan">Catatan kondisi</label>'+
-    '<textarea id="catatan" placeholder="Contoh: baterai drop, harus colok charger terus">'+esc(L.catatan)+'</textarea>'+
+    '<textarea id="catatan" placeholder="Contoh: baterai drop, harus colok charger terus">'+
+    esc(L.catatan)+'</textarea>'+
     '<label>Status kelayakan</label>'+
     [['SIAP_PAKAI','Siap pakai','Aman dipakai siswa di ruangan ini'],
      ['CADANGAN','Cadangan','Disimpan di meja teknisi untuk penggantian'],
-     ['RUSAK','Rusak / tarik ke ruang laptop','Tidak dipakai ujian']].map(function(x){
+     ['RUSAK','Rusak, tarik ke ruang laptop','Tidak dipakai ujian']].map(function(x){
       return '<label class="radio"><input type="radio" name="kel" value="'+x[0]+'" '+
         (L.status===x[0]||(L.status==='BELUM_SETUP'&&x[0]==='SIAP_PAKAI')?'checked':'')+'>'+
-        '<span>'+x[1]+'<small style="display:block;font-size:12px;color:var(--slate)">'+x[2]+'</small></span></label>';
+        '<span>'+x[1]+'<small style="display:block;font-size:12px;color:var(--slate)">'+
+        x[2]+'</small></span></label>';
      }).join('')+
     '<button class="btn" id="btnAksi" onclick="simpanInspeksi()">Simpan data laptop</button>';
 }
@@ -571,8 +620,7 @@ function simpanInspeksi(){
     d[x]=document.getElementById('c_'+x).checked; });
   sibuk(true);
   api('inspeksi',d).then(function(j){
-    perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, status:j.status,
-      catatan:d.catatan,
+    perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, status:j.status, catatan:d.catatan,
       kelengkapan:{charger:d.charger, mouse:d.mouse, mousepad:d.mousepad, headset:d.headset},
       punyaSandi: S.laptop.punyaSandi || (d.password !== undefined && d.password !== '') });
     S.hasil={judul:'Tersimpan', teks:j.pesan, jenis:'ok'}; S.view='hasil'; render();
@@ -586,7 +634,7 @@ function v_mapping(){
   if(!d.length){
     return '<p class="eyebrow">Fase 2 · Pasang siswa</p>'+kartu(L)+
       '<div class="note err">Daftar sesi belum diatur. Minta admin mengisi '+
-      '<b>daftar_sesi</b> di sheet CONFIG, contoh: Sesi 1, Sesi 2, Sesi 3.</div>';
+      '<b>daftar_sesi</b> di sheet CONFIG, contoh: Sesi 1|07:30, Sesi 2|10:00.</div>';
   }
   var isi = barisKelengkapan(L.kelengkapan)+tombolSandi(L.id);
   var blok = d.map(function(nm, ke){
@@ -602,9 +650,9 @@ function v_mapping(){
     var nilai = p ? esc(p[2]) : '';
     return '<label for="q'+ke+'">'+esc(nm)+(aktif?' · sesi aktif':'')+'</label>'+
       '<div class="ac"><input id="q'+ke+'" autocomplete="off" '+
-      'placeholder="Ketik 2 huruf nama, atau biarkan kosong" value="'+nilai+'" '+
+      'placeholder="Ketik 2 huruf nama atau kelas" value="'+nilai+'" '+
       'oninput="cariSiswa(this.value,'+ke+')"><div id="ac'+ke+'"></div></div>'+
-      '<input type="hidden" id="nis'+ke+'" value="'+(p?esc(p[1]):'')+'" '+
+      '<input type="hidden" id="sid'+ke+'" value="'+(p?esc(p[1]):'')+'" '+
       'data-awal="'+(p?esc(p[1]):'')+'">';
   }).join('');
 
@@ -613,29 +661,43 @@ function v_mapping(){
     'dengan memindai laptop ini lagi.</p>'+blok+
     '<button class="btn" id="btnAksi" onclick="simpanMapping()">Simpan penugasan</button>';
 }
+
+/* Pencarian menelusuri nama DAN kelas. Kelas ditampilkan menonjol karena
+   itulah pembeda utama saat ada dua siswa bernama sama. */
 function cariSiswa(q, ke){
   var box=document.getElementById('ac'+ke);
-  document.getElementById('nis'+ke).value='';
+  document.getElementById('sid'+ke).value='';
   q=q.trim().toLowerCase();
   if(q.length<2){ box.innerHTML=''; return; }
   var hasil=S.siswa.filter(function(r){
-    return r[1].toLowerCase().indexOf(q)>-1 || r[0].indexOf(q)>-1; }).slice(0,25);
+    return String(r[1]).toLowerCase().indexOf(q)>-1 ||
+           String(r[2]).toLowerCase().indexOf(q)>-1; }).slice(0,25);
+
+  // Menandai nama yang muncul lebih dari sekali di hasil, supaya panitia
+  // sadar harus memilih berdasarkan kelas.
+  var hitung={};
+  hasil.forEach(function(r){ var n=String(r[1]).toLowerCase(); hitung[n]=(hitung[n]||0)+1; });
+
   box.innerHTML = hasil.length
     ? '<div class="ac-list">'+hasil.map(function(r){
-        return '<button onclick="pilihSiswa(\''+r[0]+'\',\''+esc(r[1]).replace(/'/g,"\\'")+'\','+ke+')">'+
-          '<b>'+esc(r[1])+'</b><span>'+esc(r[2])+' · NIS '+esc(r[0])+'</span></button>'; }).join('')+'</div>'
+        var kembar = hitung[String(r[1]).toLowerCase()]>1;
+        return '<button onclick="pilihSiswa(\''+esc(r[0])+'\',\''+
+          esc(String(r[1])).replace(/'/g,"\\'")+'\','+ke+')">'+
+          '<b>'+esc(r[1])+'</b><span>'+esc(r[2]||'kelas belum diisi')+
+          (kembar?' · <b style="color:var(--amber)">nama kembar, periksa kelas</b>':'')+
+          '</span></button>'; }).join('')+'</div>'
     : '<div class="ac-list"><button disabled><b>Tidak ada yang cocok</b>'+
-      '<span>Periksa ejaan atau cari pakai NIS</span></button></div>';
+      '<span>Periksa ejaan, atau cari lewat nama kelas</span></button></div>';
 }
-function pilihSiswa(nis,nama,ke){
-  document.getElementById('nis'+ke).value=nis;
+function pilihSiswa(sid,nama,ke){
+  document.getElementById('sid'+ke).value=sid;
   document.getElementById('q'+ke).value=nama;
   document.getElementById('ac'+ke).innerHTML='';
 }
 function simpanMapping(){
   var daftar=[], adaIsi=false, salah='';
   daftarSesi().forEach(function(nm, ke){
-    var h=document.getElementById('nis'+ke), t=document.getElementById('q'+ke);
+    var h=document.getElementById('sid'+ke), t=document.getElementById('q'+ke);
     if(!h) return;                                  // sesi terkunci
     if(t && t.value.trim() && !h.value){
       salah = salah || ('Nama pada '+nm+' belum dipilih dari daftar yang muncul.');
@@ -646,7 +708,7 @@ function simpanMapping(){
     // akan menganggapnya perintah membatalkan — dan itu bisa menghapus
     // penugasan yang baru saja diisi panitia lain di HP berbeda.
     if(!h.value && !semula) return;
-    daftar.push({sesi:nm, nis:h.value});
+    daftar.push({sesi:nm, siswa:h.value});
     if(h.value) adaIsi=true;
   });
   if(salah){ pesan(esc(salah),'err'); return; }
@@ -675,11 +737,13 @@ function v_swap(){
     'ke unit cadangan. Sesi yang sudah selesai tetap tercatat di unit lama.</p>'+
     kartu(A, barisPenugasan(A))+kartu(B, barisKelengkapan(B.kelengkapan))+
     '<div id="notif"></div><label>Alasan kendala</label>'+
-    ['Mati total / baterai drop','Layar blank','Keyboard macet','Tidak bisa masuk aplikasi ujian','Lainnya']
-      .map(function(x,i){ return '<label class="radio"><input type="radio" name="alasan" value="'+esc(x)+'" '+
-        (i===0?'checked':'')+'>'+x+'</label>'; }).join('')+
+    ['Mati total atau baterai drop','Layar blank','Keyboard macet',
+     'Tidak bisa masuk aplikasi ujian','Lainnya']
+      .map(function(x,i){ return '<label class="radio"><input type="radio" name="alasan" value="'+
+        esc(x)+'" '+(i===0?'checked':'')+'>'+x+'</label>'; }).join('')+
     '<button class="btn danger" id="btnAksi" onclick="simpanSwap()">Konfirmasi tukar laptop</button>'+
-    '<button class="btn ghost small" onclick="S.swapRusak=null;S.laptop=null;S.view=\'scan\';render()">Ulangi dari awal</button>';
+    '<button class="btn ghost small" onclick="S.swapRusak=null;S.laptop=null;S.view=\'scan\';render()">'+
+    'Ulangi dari awal</button>';
 }
 function simpanSwap(){
   sibuk(true,'Memindahkan...');
@@ -688,11 +752,12 @@ function simpanSwap(){
     .then(function(j){
       perbaruiLokal(S.swapRusak.id, { status:'RUSAK', ruangan:'Ruang Laptop',
         penugasan:j.penugasanLama||[] });
-      perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, penugasan:j.penugasan||[] });
+      perbaruiLokal(S.laptop.id, { ruangan:j.ruangan, status:'SIAP_PAKAI',
+        penugasan:j.penugasan||[] });
       var nama=['charger','mouse','mousepad','headset'].filter(function(x){return j.kelengkapan[x];});
       S.hasil={judul:'Laptop ditukar', jenis:'ok', teks:j.pesan,
         rinci:'Sesi yang pindah: <b>'+esc((j.sesiPindah||[]).join(', '))+'</b><br>'+
-          'Sandi '+S.laptop.id+': <b style="font-family:\'IBM Plex Mono\',monospace">'+
+          'Sandi '+esc(S.laptop.id)+': <b style="font-family:\'IBM Plex Mono\',monospace">'+
           esc(j.password||'(kosong)')+'</b><br>Kelengkapan yang diserahkan: '+
           (nama.length?nama.join(', '):'tidak ada')};
       S.view='hasil'; render();
@@ -702,36 +767,60 @@ function simpanSwap(){
 /* ---------- FASE 3 ---------- */
 function v_checkout(){
   var L=S.laptop;
-  var terbuka=(L.penugasan||[]).filter(function(p){ return p[4]==='BERJALAN'; });
-  if(!terbuka.length){
+  var d=daftarSesi();
+  var iAktif=indeksSesiAktif();
+  var semuaTerbuka=(L.penugasan||[]).filter(function(p){ return p[4]==='BERJALAN'; });
+
+  if(!semuaTerbuka.length){
     return '<p class="eyebrow">Fase 3 · Check-out</p>'+kartu(L, barisPenugasan(L))+
       '<div class="note err">Laptop ini tidak punya penugasan terbuka hari ini, '+
       'jadi tidak ada yang perlu diperiksa.</div>'+
       '<button class="btn" onclick="mulaiMode(\'checkout\')">Scan laptop lain</button>';
   }
-  var d=daftarSesi();
-  var nama=terbuka.map(function(p){ return esc(p[2])+' ('+esc(d[p[0]]||'')+')'; }).join(', ');
-  var banyak = terbuka.length>1;
-  var peringatan = banyak
-    ? '<div class="note warn">Laptop ini dipakai <b>'+terbuka.length+' siswa</b> hari ini: '+nama+
-      '.<br>Kalau ada yang hilang, sistem tidak bisa memastikan siapa penyebabnya. '+
-      'Laporan akan mencatat semuanya dengan tanda <b>tidak pasti</b>.</div>'
-    : '<div class="note">Pemakai: <b>'+nama+'</b></div>';
 
-  var lingkup = banyak
+  // Sesi aktif dan sebelumnya. Sesi yang belum terjadi tidak boleh ikut ditutup —
+  // siswanya bahkan belum menyentuh laptop ini.
+  var sampaiKini = semuaTerbuka.filter(function(p){ return iAktif<0 || p[0]<=iAktif; });
+  var sesiIni = semuaTerbuka.filter(function(p){ return p[0]===iAktif; });
+  var nanti = semuaTerbuka.filter(function(p){ return iAktif>=0 && p[0]>iAktif; });
+
+  if(!sampaiKini.length){
+    return '<p class="eyebrow">Fase 3 · Check-out</p>'+kartu(L, barisPenugasan(L))+
+      '<div class="note warn">Penugasan laptop ini baru dimulai pada sesi berikutnya, '+
+      'jadi belum ada yang perlu diperiksa sekarang.</div>'+
+      '<button class="btn" onclick="mulaiMode(\'checkout\')">Scan laptop lain</button>';
+  }
+
+  var namaSesiIni = sesiIni.map(function(p){ return esc(p[2])+' ('+esc(d[p[0]]||'')+')'; }).join(', ');
+  var namaSemua = sampaiKini.map(function(p){ return esc(p[2])+' ('+esc(d[p[0]]||'')+')'; }).join(', ');
+  var tertinggal = sampaiKini.length - sesiIni.length;
+
+  var peringatan = tertinggal>0
+    ? '<div class="note warn">Ada <b>'+tertinggal+' penugasan sesi sebelumnya</b> yang belum '+
+      'pernah diperiksa: '+namaSemua+'.<br>Kalau ditutup bersamaan dan ada yang hilang, '+
+      'sistem tidak bisa memastikan siapa penyebabnya.</div>'
+    : '<div class="note">Pemakai: <b>'+(namaSesiIni||namaSemua)+'</b></div>';
+
+  var lingkup = tertinggal>0
     ? '<label>Lingkup pemeriksaan</label>'+
-      '<label class="radio"><input type="radio" name="lingkup" value="hari" checked>'+
-      '<span>Seluruh hari<small style="display:block;font-size:12px;color:var(--slate)">'+
-      'Menutup '+terbuka.length+' penugasan sekaligus</small></span></label>'+
-      '<label class="radio"><input type="radio" name="lingkup" value="sesi">'+
+      '<label class="radio"><input type="radio" name="lingkup" value="sesi" checked>'+
       '<span>Hanya '+esc(sesiAktif())+'<small style="display:block;font-size:12px;color:var(--slate)">'+
-      'Sesi lain tetap terbuka</small></span></label>'
+      'Sesi yang tertinggal tetap terbuka</small></span></label>'+
+      '<label class="radio"><input type="radio" name="lingkup" value="hari">'+
+      '<span>Sekalian yang tertinggal<small style="display:block;font-size:12px;color:var(--slate)">'+
+      'Menutup '+sampaiKini.length+' penugasan, ditandai tidak pasti</small></span></label>'
     : '';
+
+  if(nanti.length){
+    peringatan += '<div class="note">'+nanti.length+' penugasan sesi berikutnya tidak ikut '+
+      'diperiksa sekarang.</div>';
+  }
 
   // Patokan diambil dari penugasan terbuka paling awal — sama dengan yang dipakai
   // server. Kondisi laptop sekarang bisa berbeda kalau sesi sebelumnya sudah
   // melaporkan ada yang hilang.
-  var bit = terbuka[0][5];
+  var acuan = (tertinggal>0 ? sampaiKini : (sesiIni.length?sesiIni:sampaiKini))[0];
+  var bit = acuan[5];
   if(bit === undefined) bit = (L.kelengkapan.charger?1:0)+(L.kelengkapan.mouse?2:0)+
     (L.kelengkapan.mousepad?4:0)+(L.kelengkapan.headset?8:0);
   var patokan = {charger:!!(bit&1), mouse:!!(bit&2), mousepad:!!(bit&4), headset:!!(bit&8)};
@@ -741,8 +830,10 @@ function v_checkout(){
     '<label>Centang yang benar-benar ada di meja</label>'+
     ['charger','mouse','mousepad','headset'].map(function(x){
       if(!patokan[x]) return '';
-      return '<label class="check" onchange="this.classList.toggle(\'off\',!this.querySelector(\'input\').checked)">'+
-        '<input type="checkbox" id="c_'+x+'" checked>'+x.charAt(0).toUpperCase()+x.slice(1)+'</label>';
+      return '<label class="check" onchange="this.classList.toggle(\'off\','+
+        '!this.querySelector(\'input\').checked)">'+
+        '<input type="checkbox" id="c_'+x+'" checked>'+
+        x.charAt(0).toUpperCase()+x.slice(1)+'</label>';
     }).join('')+
     '<label for="catatan">Keterangan (opsional)</label>'+
     '<textarea id="catatan" placeholder="Contoh: headset ketinggalan di ruang sebelah"></textarea>'+
@@ -751,7 +842,7 @@ function v_checkout(){
 function simpanCheckout(){
   var pilihan=document.querySelector('input[name=lingkup]:checked');
   var d={id:S.laptop.id, catatan:document.getElementById('catatan').value,
-         lingkup: pilihan ? pilihan.value : 'hari'};
+         lingkup: pilihan ? pilihan.value : 'sesi'};
   ['charger','mouse','mousepad','headset'].forEach(function(x){
     var el=document.getElementById('c_'+x); d[x]= el?el.checked:false; });
   sibuk(true,'Memeriksa...');
@@ -760,9 +851,10 @@ function simpanCheckout(){
       kelengkapan:{charger:d.charger, mouse:d.mouse, mousepad:d.mousepad, headset:d.headset} });
     S.hasil = j.hilang.length
       ? {judul:'Aksesoris hilang dilaporkan', jenis:'err', teks:j.pesan,
-         rinci:'Item: <b>'+j.hilang.join(', ')+'</b><br>Terlibat: '+esc(j.terlibat.join(', '))+
+         rinci:'Item: <b>'+esc(j.hilang.join(', '))+'</b><br>Terlibat: '+esc(j.terlibat.join(', '))+
                (j.kepastian==='TIDAK_PASTI'
-                 ? '<br><br>Ditandai <b>tidak pasti</b> karena laptop dipakai lebih dari satu siswa hari ini. Admin yang menentukan tindak lanjutnya.'
+                 ? '<br><br>Ditandai <b>tidak pasti</b> karena lebih dari satu penugasan ditutup '+
+                   'bersamaan. Admin yang menentukan tindak lanjutnya.'
                  : '<br><br>Siswa ini ditandai di dashboard admin.')}
       : {judul:'Lengkap', jenis:'ok', teks:j.pesan, rinci:'Siswa dipersilakan keluar ruangan.'};
     S.view='hasil'; render();
@@ -779,6 +871,30 @@ function v_hasil(){
     '<button class="btn ghost small" onclick="keMenu()">Kembali ke menu</button>';
 }
 
+/* ---------- AKTIVITAS PANITIA (admin) ---------- */
+function v_aktivitas(){
+  return '<p class="eyebrow">Admin</p><h2>Aktivitas panitia</h2>'+
+    '<p class="lead">Seratus dua puluh tindakan terakhir, termasuk yang gagal.</p>'+
+    '<div id="notif"></div><div id="jejak">Memuat...</div>';
+}
+function muatAktivitas(){
+  api('aktivitas',{jumlah:120}).then(function(j){
+    var el=document.getElementById('jejak');
+    if(!j.log.length){ el.innerHTML='<div class="note">Belum ada aktivitas tercatat.</div>'; return; }
+    el.innerHTML = '<div class="jejak">'+j.log.map(function(l){
+      var gagal = l.aksi.indexOf('GAGAL_')===0;
+      return '<div'+(gagal?' class="gagal"':'')+'>'+
+        '<span class="jam">'+esc(l.waktu)+'</span> · <span class="siapa">'+esc(l.panitia)+'</span><br>'+
+        esc(l.aksi.replace(/_/g,' ').toLowerCase())+
+        (l.laptop?' · <b>'+esc(l.laptop)+'</b>':'')+
+        (l.detail?'<br><span style="color:var(--slate)">'+esc(l.detail)+'</span>':'')+
+        '</div>'; }).join('')+'</div>'+
+      '<button class="btn ghost small" onclick="muatAktivitas()">Muat ulang</button>';
+  }).catch(function(e){
+    document.getElementById('jejak').innerHTML='<div class="note err">'+esc(e.message)+'</div>';
+  });
+}
+
 /* ---------- DASHBOARD ---------- */
 function v_dashboard(){
   return '<p class="eyebrow">Admin</p><h2>Dashboard</h2>'+
@@ -788,26 +904,42 @@ function muatDashboard(){
   api('dashboard').then(function(j){
     var urut=['SIAP_PAKAI','CADANGAN','RUSAK','AKSESORIS_HILANG','BELUM_SETUP'];
     var stat=urut.filter(function(k){return j.perStatus[k];}).map(function(k){
-      return '<div class="stat"><b>'+j.perStatus[k]+'</b><span>'+k.replace(/_/g,' ')+'</span></div>'; }).join('');
+      return '<div class="stat"><b>'+j.perStatus[k]+'</b><span>'+k.replace(/_/g,' ')+
+        '</span></div>'; }).join('');
     stat+='<div class="stat"><b>'+j.swapHariIni+'</b><span>Tukar hari ini</span></div>';
 
-    var perSesi='<div class="tbl"><table><tr><th>Sesi</th><th>Terisi</th><th>Berjalan</th><th>Selesai</th></tr>'+
+    var perSesi='<div class="tbl"><table><tr><th>Sesi</th><th>Terisi</th><th>Berjalan</th>'+
+      '<th>Selesai</th></tr>'+
       Object.keys(j.perSesi||{}).map(function(s){ var x=j.perSesi[s];
         return '<tr><td>'+esc(s)+'</td><td>'+x.terisi+'</td><td>'+x.terbuka+
           '</td><td>'+x.selesai+'</td></tr>'; }).join('')+'</table></div>';
 
+    var panitia = (j.panitia||[]).length
+      ? '<div class="tbl"><table><tr><th>Panitia</th><th>Inspeksi</th><th>Pasang</th>'+
+        '<th>Tutup</th><th>Tukar</th><th>Gagal</th></tr>'+
+        j.panitia.map(function(p){
+          var sepi = !(p.inspeksi||p.mapping||p.checkout||p.swap);
+          return '<tr'+(sepi?' style="color:var(--slate)"':'')+'><td>'+esc(p.nama)+
+            (p.peran==='admin'?' <span style="font-size:11px;color:var(--slate)">admin</span>':'')+
+            '</td><td>'+p.inspeksi+'</td><td>'+p.mapping+'</td><td>'+p.checkout+
+            '</td><td>'+p.swap+'</td><td'+(p.gagal?' style="color:var(--red);font-weight:600"':'')+
+            '>'+p.gagal+'</td></tr>'; }).join('')+'</table></div>'+
+        '<p class="hint">Baris abu-abu berarti panitia itu belum melakukan apa pun hari ini. '+
+        'Kolom gagal yang tinggi biasanya berarti ada yang tersendat, bukan ada yang nakal.</p>'
+      : '<div class="note">Belum ada aktivitas hari ini.</div>';
+
     var ruang='<div class="tbl"><table><tr><th>Ruangan</th><th>Isi</th></tr>'+
       Object.keys(j.perRuangan).map(function(r){
         return '<tr><td>'+esc(r)+'</td><td>'+Object.keys(j.perRuangan[r]).map(function(k){
-          return k.replace(/_/g,' ').toLowerCase()+' '+j.perRuangan[r][k]; }).join(', ')+'</td></tr>';
-      }).join('')+'</table></div>';
+          return k.replace(/_/g,' ').toLowerCase()+' '+j.perRuangan[r][k]; }).join(', ')+
+          '</td></tr>'; }).join('')+'</table></div>';
 
     var flag = j.flagSiswa.length
       ? '<div class="tbl"><table><tr><th>Siswa</th><th>Kelas</th><th>Item</th><th>Kepastian</th></tr>'+
         j.flagSiswa.map(function(f){ return '<tr><td>'+esc(f.nama)+'</td><td>'+esc(f.kelas)+
           '</td><td>'+f.jumlah+'</td><td>'+(f.kepastian==='PASTI'?'pasti':'tidak pasti')+
           '</td></tr>'; }).join('')+'</table></div>'+
-        '<p class="hint">"Tidak pasti" berarti laptop dipakai lebih dari satu siswa hari itu, '+
+        '<p class="hint">Tidak pasti berarti beberapa penugasan ditutup bersamaan, '+
         'jadi penyebabnya tidak bisa ditentukan sistem.</p>'
       : '<div class="note ok">Tidak ada siswa yang ditandai. Semua aksesoris kembali.</div>';
 
@@ -815,23 +947,37 @@ function muatDashboard(){
       ? j.laporan.map(function(l){
           return '<div class="tag" data-s="AKSESORIS_HILANG"><div class="tag-body">'+
             '<b>'+esc(l.item)+'</b> — '+esc(l.laptop)+' · '+esc(l.ruangan||'')+
-            '<div class="tag-meta">'+esc(l.nama)+' ('+esc(l.kelas)+') · '+esc(l.tanggal)+' '+esc(l.sesi)+
-            (l.kepastian==='TIDAK_PASTI'?' · <b>tidak pasti</b>':'')+'</div>'+
+            '<div class="tag-meta">'+esc(l.nama)+' ('+esc(l.kelas)+') · '+esc(l.tanggal)+' '+
+            esc(l.sesi)+(l.kepastian==='TIDAK_PASTI'?' · <b>tidak pasti</b>':'')+'</div>'+
             '<input class="ket" placeholder="Keterangan penyelesaian" style="margin-top:10px">'+
-            '<button class="btn small" onclick="tutup(this,\''+l.id+'\')">Tutup laporan</button>'+
+            '<button class="btn small" onclick="tutup(this,\''+esc(l.id)+'\')">Tutup laporan</button>'+
             '</div></div>'; }).join('')
       : '';
 
     var rusak = j.rusak.length
       ? '<div class="tbl"><table><tr><th>Unit</th><th>Catatan</th></tr>'+j.rusak.map(function(r){
-          return '<tr><td>'+esc(r.id)+'</td><td>'+esc(r.catatan||'-')+'</td></tr>'; }).join('')+'</table></div>'
+          return '<tr><td>'+esc(r.id)+'</td><td>'+esc(r.catatan||'-')+'</td></tr>'; }).join('')+
+          '</table></div>'
       : '<div class="note ok">Tidak ada unit rusak.</div>';
+
+    var mode = j.sesi.mode || 'normal';
+    var kendali =
+      '<label for="dMode">Mode aplikasi</label>'+
+      '<select id="dMode">'+
+      [['normal','Normal — panitia bisa menyimpan'],
+       ['baca_saja','Baca saja — panitia tidak bisa menyimpan'],
+       ['tutup','Tutup — hanya admin yang bisa bekerja']].map(function(x){
+        return '<option value="'+x[0]+'"'+(mode===x[0]?' selected':'')+'>'+x[1]+'</option>';
+      }).join('')+'</select>'+
+      '<button class="btn ghost small" onclick="ubahMode()">Simpan mode</button>';
 
     document.getElementById('dash').innerHTML =
       '<div class="grid">'+stat+'</div>'+
       '<p class="eyebrow">Peserta per sesi</p>'+perSesi+
+      '<p class="eyebrow">Kerja panitia hari ini</p>'+panitia+
       '<p class="eyebrow">Sebaran per ruangan</p>'+ruang+
-      '<p class="eyebrow">Aksesoris hilang · belum selesai</p>'+(lap||'<div class="note ok">Kosong.</div>')+
+      '<p class="eyebrow">Aksesoris hilang · belum selesai</p>'+
+      (lap||'<div class="note ok">Kosong.</div>')+
       '<p class="eyebrow">Siswa bertanda</p>'+flag+
       '<p class="eyebrow">Unit rusak</p>'+rusak+
       '<p class="eyebrow">Sesi aktif</p>'+
@@ -843,8 +989,11 @@ function muatDashboard(){
       (j.sesi.daftar||[]).map(function(nm){
         return '<option'+(nm===j.sesi.sesi?' selected':'')+'>'+esc(nm)+'</option>'; }).join('')+
       '</select>'+
-      '<button class="btn" onclick="ubahSesi()">Simpan sesi aktif</button>';
-  }).catch(function(e){ document.getElementById('dash').innerHTML='<div class="note err">'+esc(e.message)+'</div>'; });
+      '<button class="btn" onclick="ubahSesi()">Simpan sesi aktif</button>'+
+      '<p class="eyebrow">Kendali darurat</p>'+kendali;
+  }).catch(function(e){
+    document.getElementById('dash').innerHTML='<div class="note err">'+esc(e.message)+'</div>';
+  });
 }
 function tutup(btn, id){
   var ket = btn.previousElementSibling.value.trim();
@@ -857,7 +1006,12 @@ function tutup(btn, id){
 function ubahSesi(){
   api('setSesi',{tanggal:document.getElementById('dTanggal').value,
                  sesi:document.getElementById('dSesi').value})
-    .then(function(j){ S.sesi=j.sesi; render(); })
+    .then(function(j){ S.sesi=j.sesi; segarkan(true); render(); })
+    .catch(function(e){ alert(e.message); });
+}
+function ubahMode(){
+  api('setMode',{mode:document.getElementById('dMode').value})
+    .then(function(j){ S.sesi=j.sesi; alert(j.pesan); })
     .catch(function(e){ alert(e.message); });
 }
 

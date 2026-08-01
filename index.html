@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -11,23 +12,34 @@
   --graphite:#1B1D21; --slate:#5B6670; --paper:#E9EDEF; --card:#FFFFFF;
   --edge:#D2D9DD; --teal:#0F6E6B; --teal-dark:#0A5350;
   --green:#17864A; --amber:#C98A05; --red:#C0392B; --flag:#B32318;
-  --tap:56px;
+  --tap:56px; --sisi:16px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0}
+html{
+  /* Safari membesarkan teks sendiri saat orientasi berubah; ini mematikannya. */
+  -webkit-text-size-adjust:100%; text-size-adjust:100%;
+}
+html,body{margin:0;padding:0;overflow-x:hidden}
 body{
   background:var(--paper); color:var(--graphite);
   font:400 16px/1.5 Archivo,system-ui,sans-serif;
   padding-bottom:env(safe-area-inset-bottom);
 }
-.wrap{max-width:640px;margin:0 auto;padding:0 16px 48px}
+.wrap{
+  max-width:640px;margin:0 auto;
+  padding:0 calc(var(--sisi) + env(safe-area-inset-right))
+          48px calc(var(--sisi) + env(safe-area-inset-left));
+}
 
 /* ---- topbar ---- */
 .top{
   position:sticky;top:0;z-index:20;background:var(--graphite);color:#fff;
-  margin:0 -16px 16px;padding:10px 16px;display:flex;align-items:center;gap:12px;
+  margin:0 calc(-1 * var(--sisi)) 16px;
+  padding:calc(10px + env(safe-area-inset-top)) var(--sisi) 10px;
+  display:flex;align-items:center;gap:12px;
 }
-.top h1{font-size:14px;font-weight:600;letter-spacing:.02em;margin:0;flex:1}
+.top h1{font-size:14px;font-weight:600;letter-spacing:.02em;margin:0;flex:1;min-width:0}
+.top .sesi{overflow-wrap:anywhere}
 .top .sesi{font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;
   text-transform:uppercase;color:#9AA6AD;display:block;margin-top:3px}
 .back{background:none;border:0;color:#fff;font-size:22px;padding:4px 8px;cursor:pointer}
@@ -48,7 +60,8 @@ body{
   padding:16px 16px 14px 26px;border-bottom:1px dashed var(--edge);
   display:flex;align-items:flex-start;gap:12px;
 }
-.tag-id{font:600 30px/1 'IBM Plex Mono',monospace;letter-spacing:-.01em;flex:1}
+.tag-id{font:600 clamp(22px,7vw,30px)/1.1 'IBM Plex Mono',monospace;
+  letter-spacing:-.01em;flex:1;min-width:0;overflow-wrap:anywhere}
 .tag-meta{font-size:13px;color:var(--slate);margin-top:6px;line-height:1.4}
 .hole{width:16px;height:16px;border-radius:50%;border:1px solid var(--edge);
   background:var(--paper);flex:none;margin-top:6px}
@@ -69,8 +82,16 @@ h2{font-size:20px;font-weight:700;margin:0 0 4px}
 /* ---- kontrol ---- */
 label{display:block;font-weight:600;font-size:14px;margin:16px 0 6px}
 input,select,textarea{
-  width:100%;min-height:var(--tap);padding:12px 14px;font:400 16px Archivo,sans-serif;
+  width:100%;max-width:100%;min-height:var(--tap);padding:12px 14px;
+  /* JANGAN turunkan di bawah 16px: iOS otomatis memperbesar halaman
+     saat kolom dengan font lebih kecil disentuh. */
+  font:400 16px Archivo,sans-serif;
   background:var(--card);border:1px solid var(--edge);border-radius:4px;color:var(--graphite);
+  -webkit-appearance:none;appearance:none;
+}
+select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235B6670' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 16px center;padding-right:42px;
 }
 textarea{min-height:80px;resize:vertical}
 input:focus,select:focus,textarea:focus,button:focus-visible{
@@ -130,12 +151,43 @@ input:focus,select:focus,textarea:focus,button:focus-visible{
 .stat b{display:block;font:600 28px/1 'IBM Plex Mono',monospace}
 .stat span{font:600 10px/1.3 'IBM Plex Mono',monospace;letter-spacing:.08em;
   text-transform:uppercase;color:var(--slate);display:block;margin-top:6px}
+.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 table{width:100%;border-collapse:collapse;background:var(--card);
   border:1px solid var(--edge);border-radius:4px;font-size:14px}
-th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--paper)}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--paper);
+  overflow-wrap:anywhere}
 th{font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;
   text-transform:uppercase;color:var(--slate)}
 .hidden{display:none}
+.note,.lead,.hint{overflow-wrap:anywhere}
+.menu-item span{min-width:0}
+
+/* Layar sangat sempit */
+@media (max-width:380px){
+  :root{--sisi:12px}
+  .tag-head{padding:14px 12px 12px 22px}
+  .tag-body{padding:12px 12px 14px 22px}
+  th,td{padding:8px 10px}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(108px,1fr))}
+  .menu-item .n{width:48px}
+}
+
+/* Tablet dan desktop */
+@media (min-width:768px){
+  :root{--sisi:24px}
+  .wrap{max-width:720px}
+  .btn{width:auto;min-width:220px;padding:0 28px}
+  .btn.small{min-width:180px}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+}
+
+/* Layar mendatar yang pendek */
+@media (max-height:520px) and (orientation:landscape){
+  :root{--tap:48px}
+  #reader{min-height:180px}
+  .tag-head{padding-top:12px;padding-bottom:10px}
+  label{margin-top:12px}
+}
 @media (prefers-reduced-motion:no-preference){
   .tag{animation:pop .18s ease-out}
   @keyframes pop{from{opacity:0;transform:translateY(6px)}}
@@ -465,7 +517,7 @@ function barisPenugasan(L){
     return '<tr><td style="width:78px'+(aktif?';font-weight:700':'')+'">'+esc(nm)+
       (aktif?' •':'')+'</td><td>'+isi+'</td></tr>';
   }).join('');
-  return '<table style="margin-top:10px;font-size:13px">'+baris+'</table>';
+  return '<div class="tbl"><table style="margin-top:10px;font-size:13px">'+baris+'</table></div>';
 }
 function barisKelengkapan(k){
   var n = ['charger','mouse','mousepad','headset'].filter(function(x){return k[x];});
@@ -739,22 +791,22 @@ function muatDashboard(){
       return '<div class="stat"><b>'+j.perStatus[k]+'</b><span>'+k.replace(/_/g,' ')+'</span></div>'; }).join('');
     stat+='<div class="stat"><b>'+j.swapHariIni+'</b><span>Tukar hari ini</span></div>';
 
-    var perSesi='<table><tr><th>Sesi</th><th>Terisi</th><th>Berjalan</th><th>Selesai</th></tr>'+
+    var perSesi='<div class="tbl"><table><tr><th>Sesi</th><th>Terisi</th><th>Berjalan</th><th>Selesai</th></tr>'+
       Object.keys(j.perSesi||{}).map(function(s){ var x=j.perSesi[s];
         return '<tr><td>'+esc(s)+'</td><td>'+x.terisi+'</td><td>'+x.terbuka+
-          '</td><td>'+x.selesai+'</td></tr>'; }).join('')+'</table>';
+          '</td><td>'+x.selesai+'</td></tr>'; }).join('')+'</table></div>';
 
-    var ruang='<table><tr><th>Ruangan</th><th>Isi</th></tr>'+
+    var ruang='<div class="tbl"><table><tr><th>Ruangan</th><th>Isi</th></tr>'+
       Object.keys(j.perRuangan).map(function(r){
         return '<tr><td>'+esc(r)+'</td><td>'+Object.keys(j.perRuangan[r]).map(function(k){
           return k.replace(/_/g,' ').toLowerCase()+' '+j.perRuangan[r][k]; }).join(', ')+'</td></tr>';
-      }).join('')+'</table>';
+      }).join('')+'</table></div>';
 
     var flag = j.flagSiswa.length
-      ? '<table><tr><th>Siswa</th><th>Kelas</th><th>Item</th><th>Kepastian</th></tr>'+
+      ? '<div class="tbl"><table><tr><th>Siswa</th><th>Kelas</th><th>Item</th><th>Kepastian</th></tr>'+
         j.flagSiswa.map(function(f){ return '<tr><td>'+esc(f.nama)+'</td><td>'+esc(f.kelas)+
           '</td><td>'+f.jumlah+'</td><td>'+(f.kepastian==='PASTI'?'pasti':'tidak pasti')+
-          '</td></tr>'; }).join('')+'</table>'+
+          '</td></tr>'; }).join('')+'</table></div>'+
         '<p class="hint">"Tidak pasti" berarti laptop dipakai lebih dari satu siswa hari itu, '+
         'jadi penyebabnya tidak bisa ditentukan sistem.</p>'
       : '<div class="note ok">Tidak ada siswa yang ditandai. Semua aksesoris kembali.</div>';
@@ -771,8 +823,8 @@ function muatDashboard(){
       : '';
 
     var rusak = j.rusak.length
-      ? '<table><tr><th>Unit</th><th>Catatan</th></tr>'+j.rusak.map(function(r){
-          return '<tr><td>'+esc(r.id)+'</td><td>'+esc(r.catatan||'-')+'</td></tr>'; }).join('')+'</table>'
+      ? '<div class="tbl"><table><tr><th>Unit</th><th>Catatan</th></tr>'+j.rusak.map(function(r){
+          return '<tr><td>'+esc(r.id)+'</td><td>'+esc(r.catatan||'-')+'</td></tr>'; }).join('')+'</table></div>'
       : '<div class="note ok">Tidak ada unit rusak.</div>';
 
     document.getElementById('dash').innerHTML =

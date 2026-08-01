@@ -315,6 +315,7 @@ function perbaruiLokal(id, ubah){
 function segarkan(diam){
   return api('snapshot').then(function(j){
     terapkanSnapshot(j.laptop); S.ruangan = j.ruangan; S.sesi = j.sesi;
+    if(j.siswa) S.siswa = j.siswa;   // siswa susulan ikut termuat tanpa login ulang
     if(!diam) render();
   }).catch(function(e){ if(!diam) pesan(esc(e.message),'err'); });
 }
@@ -691,6 +692,15 @@ function cariSiswa(q, ke){
   var hitung={};
   hasil.forEach(function(r){ var n=String(r[1]).toLowerCase(); hitung[n]=(hitung[n]||0)+1; });
 
+  // Dua keadaan yang tampak sama tapi obatnya berbeda: daftar siswa memang
+  // kosong, atau ejaannya yang keliru. Panitia perlu tahu mana yang terjadi.
+  var kosong = S.siswa.length
+    ? '<div class="ac-list"><button disabled><b>Tidak ada yang cocok</b>'+
+      '<span>Periksa ejaan, atau cari lewat nama kelas</span></button></div>'
+    : '<div class="ac-list"><button disabled><b>Daftar siswa belum termuat</b>'+
+      '<span>Tekan Segarkan di menu utama. Kalau tetap kosong, minta admin '+
+      'menjalankan Sinkronkan data master di spreadsheet.</span></button></div>';
+
   box.innerHTML = hasil.length
     ? '<div class="ac-list">'+hasil.map(function(r){
         var kembar = hitung[String(r[1]).toLowerCase()]>1;
@@ -699,8 +709,7 @@ function cariSiswa(q, ke){
           '<b>'+esc(r[1])+'</b><span>'+esc(r[2]||'kelas belum diisi')+
           (kembar?' · <b style="color:var(--amber)">nama kembar, periksa kelas</b>':'')+
           '</span></button>'; }).join('')+'</div>'
-    : '<div class="ac-list"><button disabled><b>Tidak ada yang cocok</b>'+
-      '<span>Periksa ejaan, atau cari lewat nama kelas</span></button></div>';
+    : kosong;
 }
 function pilihSiswa(sid,nama,ke){
   document.getElementById('sid'+ke).value=sid;

@@ -419,6 +419,16 @@ function v_menu(){
       '<span>Aktivitas panitia<small>Siapa mengerjakan apa, termasuk yang gagal</small></span></button>'
     : '';
 
+  var rusakSesi = S.sesi.sesiRusak
+    ? '<div class="note err"><b>Sesi aktif salah isi.</b><br>'+
+      'Baris <b>sesi_nama</b> di sheet CONFIG berisi "'+esc(S.sesi.sesiRusak)+'", '+
+      'padahal harus persis satu nama dari daftar sesi.<br>'+
+      'Sementara ini aplikasi memakai <b>'+esc(S.sesi.sesi)+'</b>. '+
+      (S.panitia.peran==='admin'
+        ? 'Perbaiki lewat Dashboard, atau langsung di sheet CONFIG.'
+        : 'Beri tahu admin ujian sebelum melanjutkan.')+'</div>'
+    : '';
+
   var mode = (S.sesi.mode && S.sesi.mode!=='normal')
     ? '<div class="note err">Aplikasi sedang <b>'+esc(String(S.sesi.mode).replace(/_/g,' '))+'</b>. '+
       (S.panitia.peran==='admin' ? 'Anda tetap bisa menyimpan sebagai admin.'
@@ -437,7 +447,7 @@ function v_menu(){
   var kapan = umur < 0 ? 'belum dimuat'
             : umur < 60 ? umur + ' detik lalu'
             : Math.round(umur/60) + ' menit lalu';
-  return mode+ingat+'<p class="eyebrow">Alur ujian</p>'+m+admin+
+  return rusakSesi+mode+ingat+'<p class="eyebrow">Alur ujian</p>'+m+admin+
     '<p class="eyebrow">Data</p>'+
     '<button class="btn ghost small" style="margin-top:0" onclick="segarkanManual(this)">'+
     Object.keys(S.snapshot).length+' laptop · '+S.siswa.length+' siswa · '+kapan+' · Segarkan</button>'+

@@ -180,6 +180,13 @@ th{font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;
   text-transform:uppercase;color:var(--slate)}
 .hidden{display:none}
 
+/* ---- saringan papan ruangan ---- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{background:var(--card);border:1px solid var(--edge);border-radius:999px;
+  padding:9px 14px;min-height:40px;font:600 13px Archivo,sans-serif;
+  color:var(--slate);cursor:pointer}
+.chip.on{background:var(--graphite);border-color:var(--graphite);color:#fff}
+
 /* ---- aliran aktivitas ---- */
 .jejak{background:var(--card);border:1px solid var(--edge);border-radius:4px;
   max-height:320px;overflow:auto}
@@ -241,6 +248,7 @@ var API = (function(){
 
 var S = { pin:'', panitia:null, siswa:[], ruangan:[], sesi:{}, view:'login',
           mode:'', laptop:null, swapRusak:null, hasil:null,
+          rgPilih:'', rgFilter:'semua', rgCari:'',
           snapshot:{}, dimuat:0, ms:0, msServer:0 };
 
 /* ---------- jembatan API ---------- */
@@ -342,10 +350,12 @@ function render(){
   el.innerHTML = ({
     konfig:v_konfig, login:v_login, menu:v_menu, scan:v_scan, inspeksi:v_inspeksi,
     mapping:v_mapping, swap:v_swap, checkout:v_checkout, hasil:v_hasil,
+    ruangan:v_ruangan, rgDetail:v_rgDetail,
     dashboard:v_dashboard, aktivitas:v_aktivitas
   })[S.view]();
   window.scrollTo(0,0);
   if(S.view==='scan') mulaiScanner();
+  if(S.view==='ruangan') gambarRuangan();
   if(S.view==='dashboard') muatDashboard();
   if(S.view==='aktivitas') muatAktivitas();
   var f = document.getElementById('fokus'); if(f) f.focus();
@@ -411,6 +421,11 @@ function v_menu(){
   }).join('') || '<div class="note warn">Belum ada menu yang dibuka untuk Anda. '+
     'Minta admin mengisi kolom <b>izin</b> di sheet MASTER_PANITIA.</div>';
 
+  var pantau = '<p class="eyebrow">Pantauan</p>'+
+    '<button class="menu-item" onclick="masukRuangan()"><span class="n">Ruang</span>'+
+    '<span>Isi ruangan<small>Semua laptop di ruangan Anda beserta pemakainya</small>'+
+    '</span></button>';
+
   var admin = (S.panitia && S.panitia.peran==='admin')
     ? '<p class="eyebrow">Admin</p>'+
       '<button class="menu-item" onclick="pergi(\'dashboard\')"><span class="n">Pusat</span>'+
@@ -447,7 +462,7 @@ function v_menu(){
   var kapan = umur < 0 ? 'belum dimuat'
             : umur < 60 ? umur + ' detik lalu'
             : Math.round(umur/60) + ' menit lalu';
-  return rusakSesi+mode+ingat+'<p class="eyebrow">Alur ujian</p>'+m+admin+
+  return rusakSesi+mode+ingat+'<p class="eyebrow">Alur ujian</p>'+m+pantau+admin+
     '<p class="eyebrow">Data</p>'+
     '<button class="btn ghost small" style="margin-top:0" onclick="segarkanManual(this)">'+
     Object.keys(S.snapshot).length+' laptop · '+S.siswa.length+' siswa · '+kapan+' · Segarkan</button>'+
@@ -901,6 +916,174 @@ function v_hasil(){
     '<p class="hint">server '+S.msServer+' ms · bolak-balik '+S.ms+' ms</p>'+
     '<button class="btn" onclick="mulaiMode(S.mode)">Scan laptop berikutnya</button>'+
     '<button class="btn ghost small" onclick="keMenu()">Kembali ke menu</button>';
+}
+
+/* ---------- PAPAN RUANGAN (baca saja) ---------- */
+/* Semuanya digambar dari S.snapshot yang sudah ada di HP sejak login.
+   Tidak ada permintaan baru ke server, jadi menu ini tetap terbuka saat
+   sinyal buruk maupun saat aplikasi sedang dikunci admin. */
+
+function normRuang(s){ return String(s==null?'':s).trim().toLowerCase(); }
+
+/** Ruangan yang menjadi wewenang panitia ini. Larik kosong = tanpa batas. */
+function ruanganSaya(){ return (S.panitia && S.panitia.ruangan) || []; }
+function opsiRuangan(){ var s = ruanganSaya(); return s.length ? s : (S.ruangan || []); }
+
+function masukRuangan(){
+  var o = opsiRuangan();
+  if(!S.rgPilih || o.indexOf(S.rgPilih) < 0) S.rgPilih = (o.length === 1 ? o[0] : '');
+  pergi('ruangan');
+  var umur = umurSnapshot();
+  if(umur < 0 || umur > 90) segarkan(true);
+}
+
+function laptopRuangan(){
+  var saya = ruanganSaya().map(normRuang);
+  var pilih = normRuang(S.rgPilih);
+  var out = [];
+  for(var id in S.snapshot){
+    var L = S.snapshot[id], r = normRuang(L.ruangan);
+    if(saya.length && saya.indexOf(r) < 0) continue;   /* di luar wewenang */
+    if(pilih && r !== pilih) continue;
+    out.push(L);
+  }
+  out.sort(function(a,b){ return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0); });
+  return out;
+}
+
+function kurangKelengkapan(L){
+  var k = L.kelengkapan || {};
+  return ['charger','mouse','mousepad','headset'].filter(function(x){ return !k[x]; });
+}
+function perluPerhatian(L){
+  return L.status==='RUSAK' || L.status==='AKSESORIS_HILANG' || L.status==='BELUM_SETUP';
+}
+function kapanSnapshot(){
+  var u = umurSnapshot();
+  return u < 0 ? 'belum dimuat' : (u < 60 ? u + ' detik lalu' : Math.round(u/60) + ' menit lalu');
+}
+
+function v_ruangan(){
+  var saya = ruanganSaya(), o = opsiRuangan();
+  var judul = saya.length ? (o.length === 1 ? o[0] : 'Ruangan saya') : 'Semua ruangan';
+  var sel = (o.length > 1)
+    ? '<select onchange="S.rgPilih=this.value; gambarRuangan()">'+
+      '<option value="">'+(saya.length ? 'Semua ruangan saya' : 'Semua ruangan')+'</option>'+
+      o.map(function(r){
+        return '<option'+(r===S.rgPilih?' selected':'')+'>'+esc(r)+'</option>'; }).join('')+
+      '</select>'
+    : '';
+  var catatan = saya.length ? ''
+    : '<div class="note">Kolom <b>ruangan</b> di MASTER_PANITIA belum diisi untuk Anda, '+
+      'jadi seluruh ruangan ikut ditampilkan.</div>';
+  return '<p class="eyebrow">Pantauan</p><h2>'+esc(judul)+'</h2>'+
+    '<p class="lead">Isi ruangan menurut data terakhir di HP ini. '+
+    'Halaman ini hanya menampilkan, tidak mengubah apa pun.</p>'+
+    catatan + sel + '<div id="rgIsi"></div>';
+}
+
+function gambarRuangan(){
+  var el = document.getElementById('rgIsi'); if(!el) return;
+  var semua = laptopRuangan();
+  var c = {siap:0, cadangan:0, rusak:0, belum:0, dipakai:0, kosong:0};
+  semua.forEach(function(L){
+    if(L.status==='SIAP_PAKAI') c.siap++;
+    else if(L.status==='CADANGAN') c.cadangan++;
+    else if(L.status==='RUSAK' || L.status==='AKSESORIS_HILANG') c.rusak++;
+    else c.belum++;
+    if(terbukaSesiAktif(L)) c.dipakai++;
+    else if(L.status==='SIAP_PAKAI') c.kosong++;
+  });
+
+  var angka = [
+    [semua.length, 'Laptop'],
+    [c.dipakai, 'Dipakai · ' + (sesiAktif() || '-')],
+    [c.kosong, 'Siap, kosong'],
+    [c.belum, 'Belum setup'],
+    [c.rusak, 'Bermasalah'],
+    [c.cadangan, 'Cadangan']
+  ].map(function(x){
+    return '<div class="stat"><b>'+x[0]+'</b><span>'+esc(x[1])+'</span></div>'; }).join('');
+
+  var chips = '<div class="chips">'+
+    [['semua','Semua'],['dipakai','Dipakai'],['kosong','Kosong'],['perhatian','Perlu dilihat']]
+    .map(function(x){
+      return '<button class="chip'+((S.rgFilter||'semua')===x[0]?' on':'')+'" '+
+        'onclick="S.rgFilter=\''+x[0]+'\'; gambarRuangan()">'+x[1]+'</button>'; }).join('')+
+    '</div>';
+
+  el.innerHTML = '<p class="eyebrow">Ringkasan</p><div class="grid">'+angka+'</div>'+
+    '<p class="eyebrow">Daftar laptop</p>'+chips+
+    '<input placeholder="Cari ID laptop atau nama siswa" value="'+esc(S.rgCari||'')+'" '+
+    'oninput="S.rgCari=this.value; gambarDaftarRuangan()">'+
+    '<div id="rgDaftar"></div>'+
+    '<button class="btn ghost small" onclick="segarkanRuangan(this)">Segarkan data</button>';
+  gambarDaftarRuangan();
+}
+
+function segarkanRuangan(btn){
+  btn.disabled = true; btn.textContent = 'Memuat...';
+  segarkan(true).then(function(){ gambarRuangan(); });
+}
+
+function gambarDaftarRuangan(){
+  var el = document.getElementById('rgDaftar'); if(!el) return;
+  var f = S.rgFilter || 'semua';
+  var q = normRuang(S.rgCari || '');
+  var ke = indeksSesiAktif();
+  var semua = laptopRuangan();
+  var daftar = semua.filter(function(L){
+    var p = penugasanSesi(L, ke);
+    if(f==='dipakai' && !terbukaSesiAktif(L)) return false;
+    if(f==='kosong' && (terbukaSesiAktif(L) || L.status!=='SIAP_PAKAI')) return false;
+    if(f==='perhatian' && !perluPerhatian(L) && !kurangKelengkapan(L).length) return false;
+    if(q && normRuang(L.id+' '+(p ? p[2]+' '+p[3] : '')).indexOf(q) < 0) return false;
+    return true;
+  });
+
+  if(!daftar.length){
+    el.innerHTML = '<div class="note">Tidak ada laptop yang cocok dengan saringan ini.</div>';
+    return;
+  }
+  el.innerHTML = daftar.map(function(L){
+    var p = penugasanSesi(L, ke);
+    var utama = p
+      ? esc(p[2])+' <span style="color:var(--slate)">'+esc(p[3])+'</span>'
+      : '<span style="color:var(--slate)">tidak ada peserta di '+esc(sesiAktif()||'sesi ini')+'</span>';
+    var ket = [String(L.status).replace(/_/g,' ').toLowerCase()];
+    if(p) ket.push(labelHasil(p[4]));
+    var kur = kurangKelengkapan(L);
+    if(kur.length) ket.push('tanpa '+kur.join(', '));
+    if(!S.rgPilih && String(L.ruangan||'').trim()) ket.push(L.ruangan);
+    return '<button class="menu-item" onclick="bukaLaptopRuangan(\''+esc(L.id)+'\')">'+
+      '<span class="n" style="width:72px">'+esc(L.id)+'</span>'+
+      '<span>'+utama+'<small>'+esc(ket.join(' · '))+'</small></span></button>';
+  }).join('')+
+  '<p class="hint">'+daftar.length+' dari '+semua.length+' laptop ditampilkan · '+
+  'data per '+kapanSnapshot()+'.</p>';
+}
+
+function bukaLaptopRuangan(id){
+  var L = S.snapshot[id]; if(!L) return;
+  S.laptop = L; pergi('rgDetail');
+}
+
+function v_rgDetail(){
+  var L = S.laptop;
+  var kur = kurangKelengkapan(L);
+  var isi = barisKelengkapan(L.kelengkapan)+
+    (kur.length ? '<div class="tag-meta" style="color:var(--red)">Belum tercatat: '+
+      esc(kur.join(', '))+'</div>' : '')+
+    (String(L.catatan||'').trim()
+      ? '<div class="tag-meta"><b>Catatan:</b> '+esc(L.catatan)+'</div>' : '')+
+    barisPenugasan(L);
+  return '<p class="eyebrow">Pantauan · rincian</p>'+kartu(L, isi)+
+    '<div id="notif"></div>'+
+    (L.punyaSandi ? tombolSandi(L.id)
+                  : '<div class="note warn">Sandi laptop ini belum tercatat di Fase 1.</div>')+
+    '<p class="hint">Halaman ini hanya menampilkan. Untuk mengubah, buka menu fasenya '+
+    'dan pindai laptopnya seperti biasa, supaya datanya diperiksa ulang di server.</p>'+
+    '<button class="btn ghost small" onclick="kembali()">Kembali ke daftar</button>';
 }
 
 /* ---------- AKTIVITAS PANITIA (admin) ---------- */
